@@ -1,7 +1,7 @@
 import sys
 
 def read_cli_input():
-    """Prompts the user for initial schedule info via command line"""
+    """Prompt the user for initial schedule info via command line"""
     num_participants = int(input("How many people? "))
     timeslots = int(input("How many possible timeslots are there? "))
 
@@ -29,14 +29,44 @@ def read_doodle():
     return names
 
 def generate_yices_base(yices, names):
-    """Generates a yices file representing people's initial schedules"""
+    """Generate a yices file representing people's initial schedules"""
     for (name, schedule) in names.items():
         print("(define %s :: (bitvector %s))" % (name, len(schedule)), file=yices)
         for busy_slot in [i for i, v in enumerate(schedule) if v]:
             print("(assert (not (bit %s %s)))" % (name, busy_slot), file=yices)
         
+
+def define_meetings(names):
+    """Prompts user to define meeting participants and times via command line"""
+    num_meetings = 1
+    meetings = list()
+    while True:
+        print("Who is involved in the %s meeting?" % generate_ordinal(num_meetings))
+        print(["%s: %s" % (i+1, v) for i, v in enumerate(names)])
+        members = set()
+
+        member = input()
+        while member != '':
+            # convert the text input to a zero-indexed position
+            member = int(member) - 1
+            if member < 0 or member >= len(names):
+                member = input()
+                continue
+            members.add(names[member])
+            member = input()
+
+        time_slots = int(input("How many timeslots are required for this meeting? "))
+
+        meetings.append((members, time_slots))
+
+        more = None
+        while more != 'y' and more != 'n':
+            more = input("Create another meeting? (y/n) ")
+        if more == 'n':
+            return meetings
+
 def generate_ordinal(num):
-    """Generates the ordinal equivalent of the given cardinal number"""
+    """Generate the ordinal equivalent of the given cardinal number"""
     last_1 = num % 10
     last_2 = num % 100
     if last_1 == 1 and last_2 != 11:
@@ -48,7 +78,8 @@ def generate_ordinal(num):
     return "%sth" % num
 
 def driver():
-    names = read_cli_input()
-    generate_yices_base(sys.stdout, names)
+    # names = read_cli_input()
+    # generate_yices_base(sys.stdout, names)
+    print(define_meetings(['alice', 'bob', 'charlie']))
 
 driver()
