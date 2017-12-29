@@ -18,23 +18,23 @@ def read_cli_input():
             if busy_slot < 0 or busy_slot >= len(names[name]):
                 busy_slot = input()
                 continue
-            names[name][busy_slot] = True 
+            names[name][busy_slot] = True
             busy_slot = input()
 
     return names
 
 def read_doodle():
+    """Read initial schedule data from an excel file exported by Doodle"""
     names = dict()
     # TODO: use OpenPyXl to read an excel file from doodle
     return names
 
 def generate_yices_base(yices, names):
-    """Generate a yices file representing people's initial schedules"""
+    """Generate yices code describing people's initial schedule constraints"""
     for (name, schedule) in names.items():
         print("(define %s :: (bitvector %s))" % (name, len(schedule)), file=yices)
         for busy_slot in [i for i, v in enumerate(schedule) if v]:
             print("(assert (not (bit %s %s)))" % (name, busy_slot), file=yices)
-        
 
 def define_meetings(names):
     """Prompts user to define meeting participants and times via command line"""
@@ -63,7 +63,16 @@ def define_meetings(names):
         while more != 'y' and more != 'n':
             more = input("Create another meeting? (y/n) ")
         if more == 'n':
-            return meetings
+            break
+    return meetings
+
+def generate_yices_meetings(yices, meetings):
+    """Generate yices code describing how meetings must be scheduled"""
+    for idx, meeting in enumerate(meetings):
+        print("(define m%s :: int)" % idx, file=yices)
+        names = ' '.join(meeting[0])
+        print("(assert (= (bv-redand (bv-extract (+ m%s %s) m%s (bv-and %s))) 0b0))"
+              % (idx, meeting[1], idx, names), file=yices)
 
 def generate_ordinal(num):
     """Generate the ordinal equivalent of the given cardinal number"""
@@ -80,6 +89,7 @@ def generate_ordinal(num):
 def driver():
     # names = read_cli_input()
     # generate_yices_base(sys.stdout, names)
-    print(define_meetings(['alice', 'bob', 'charlie']))
+    meetings = define_meetings(['alice', 'bob', 'charlie'])
+    generate_yices_meetings(sys.stdout, meetings)
 
 driver()
