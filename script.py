@@ -1,4 +1,5 @@
 import sys
+from math import log
 
 def read_cli_input():
     """Prompt the user for initial schedule info via command line"""
@@ -66,13 +67,19 @@ def define_meetings(names):
             break
     return meetings
 
-def generate_yices_meetings(yices, meetings):
+def generate_yices_meetings(yices, meetings, length):
     """Generate yices code describing how meetings must be scheduled"""
-    for idx, meeting in enumerate(meetings):
-        print("(define m%s :: int)" % idx, file=yices)
+    for meeting in meetings:
         names = ' '.join(meeting[0])
-        print("(assert (= (bv-redand (bv-extract (+ m%s %s) m%s (bv-and %s))) 0b0))"
-              % (idx, meeting[1], idx, names), file=yices)
+        m_length = meeting[1]
+        time_slots = ["(bv-zero-extend (bv-extract %s %s (bv-and %s)) %s)"
+                      % (i, i, names, int(log(m_length, 2)))
+                      for i in range(length)]
+        meeting_times = ["\n\t(= (mk-bv %s %s) (bv-add %s))"
+                         % (int(log(m_length, 2)) + 1, m_length,
+                            ' '.join(time_slots[i:i + m_length]))
+                         for i in range(length - m_length + 1)]
+        print("(assert (or %s))" % ''.join(meeting_times), file=yices)
 
 def generate_ordinal(num):
     """Generate the ordinal equivalent of the given cardinal number"""
@@ -90,6 +97,6 @@ def driver():
     # names = read_cli_input()
     # generate_yices_base(sys.stdout, names)
     meetings = define_meetings(['alice', 'bob', 'charlie'])
-    generate_yices_meetings(sys.stdout, meetings)
+    generate_yices_meetings(sys.stdout, meetings, 7)
 
 driver()
