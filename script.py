@@ -1,5 +1,5 @@
 import sys
-from math import log
+import subprocess
 
 def read_cli_input():
     """Prompt the user for initial schedule info via command line"""
@@ -61,6 +61,7 @@ def define_meetings(names):
         time_slots = int(input("How many timeslots are required for this meeting? "))
 
         meetings.append((members, time_slots))
+        num_meetings += 1
 
         more = None
         while more != 'y' and more != 'n':
@@ -80,10 +81,25 @@ def generate_yices_meetings(yices, meetings, length):
                                   % (idx + 1, name, i + 1)
                                   for name in names])
                       for i in range(length)]
+
         meeting_times = ["\n\t(and %s)"
                          % ' '.join(time_slots[i:i + m_length])
                          for i in range(length - m_length + 1)]
+
         print("(assert (or %s))" % ''.join(meeting_times), file=yices)
+
+def parse_yices(yices_result, max_valid):
+    """Parses the tuple results from yices into a python dictionary"""
+    final_schedules = dict()
+    for line in yices_result.splitlines():
+        if line.startswith("(="):
+            tokens = line[:-2].split(' ')
+            final_schedules[tokens[1]] = [int(meeting)
+                                          if int(meeting) >= -1 and int(meeting) <= max_valid
+                                          else 0
+                                          for meeting in tokens[3:]]
+    print(final_schedules)
+
 
 def generate_ordinal(num):
     """Generate the ordinal equivalent of the given cardinal number"""
@@ -98,9 +114,15 @@ def generate_ordinal(num):
     return "%sth" % num
 
 def driver():
-    (schedules, length) = read_cli_input()
-    meetings = define_meetings(schedules.keys())
-    generate_yices_base(sys.stdout, schedules)
-    generate_yices_meetings(sys.stdout, meetings, length)
+    """Runs the above functions in order to create a schedule"""
+    with open('yfile.ys', "w") as yfile:
+        (schedules, length) = read_cli_input()
+        meetings = define_meetings(schedules.keys())
+        generate_yices_base(yfile, schedules)
+        generate_yices_meetings(yfile, meetings, length)
+        print("(check)\n(show-model)", file=yfile)
+    result = subprocess.run(['yices', 'yfile.ys'], stdout=subprocess.PIPE).stdout
+    print(result.decode("utf-8"))
+    parse_yices(result.decode("utf-8"), len(meetings))
 
 driver()
