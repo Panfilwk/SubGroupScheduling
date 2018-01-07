@@ -33,9 +33,10 @@ def read_doodle():
 def generate_yices_base(yices, schedules):
     """Generate yices code describing people's initial schedule constraints"""
     for (name, schedule) in schedules.items():
-        print("(define %s :: (bitvector %s))" % (name, len(schedule)), file=yices)
+        types = ' '.join(["int"] * len(schedule))
+        print("(define %s :: (tuple %s))" % (name, types), file=yices)
         for busy_slot in [i for i, v in enumerate(schedule) if v]:
-            print("(assert (not (bit %s %s)))" % (name, busy_slot), file=yices)
+            print("(assert (= (select %s %s) -1))" % (name, busy_slot + 1), file=yices)
 
 def define_meetings(names):
     """Prompts user to define meeting participants and times via command line"""
@@ -68,25 +69,21 @@ def define_meetings(names):
             break
     return meetings
 
-def generate_yices_meetings(yices, meetings, names, length):
+def generate_yices_meetings(yices, meetings, length):
     """Generate yices code describing how meetings must be scheduled"""
-    time_required = dict.fromkeys([m[0] for m in names], 0)
-    for meeting in meetings:
+    for idx, meeting in enumerate(meetings):
         names = meeting[0]
         m_length = meeting[1]
-        for name in names:
-            time_required[name] += m_length
-        time_slots = ["(bv-zero-extend (bv-extract %s %s (bv-and %s)) %s)"
-                      % (i, i, ' '.join(names), int(log(m_length, 2)))
+
+        time_slots = ["(and %s)"
+                      % ' '.join(["(= %s (select %s %s))"
+                                  % (idx + 1, name, i + 1)
+                                  for name in names])
                       for i in range(length)]
-        meeting_times = ["\n\t(= (mk-bv %s %s) (bv-add %s))"
-                         % (int(log(m_length, 2)) + 1, m_length,
-                            ' '.join(time_slots[i:i + m_length]))
+        meeting_times = ["\n\t(and %s)"
+                         % ' '.join(time_slots[i:i + m_length])
                          for i in range(length - m_length + 1)]
         print("(assert (or %s))" % ''.join(meeting_times), file=yices)
-    for (name, total_time) in time_required.items():
-        times = ["(ite (bit %s %s) 1 0)" % (name, i) for i in range(length)]
-        print("(assert (= %s (+ %s)))" % (total_time, ' '.join(times)), file=yices)
 
 def generate_ordinal(num):
     """Generate the ordinal equivalent of the given cardinal number"""
@@ -104,6 +101,6 @@ def driver():
     (schedules, length) = read_cli_input()
     meetings = define_meetings(schedules.keys())
     generate_yices_base(sys.stdout, schedules)
-    generate_yices_meetings(sys.stdout, meetings, schedules.keys(), length)
+    generate_yices_meetings(sys.stdout, meetings, length)
 
 driver()
