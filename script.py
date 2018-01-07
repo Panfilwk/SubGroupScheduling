@@ -6,39 +6,40 @@ def read_cli_input():
     num_participants = int(input("How many people? "))
     timeslots = int(input("How many possible timeslots are there? "))
 
-    names = dict()
+    schedules = dict()
     for num in range(num_participants):
         name = input("What's the %s name? " % generate_ordinal(num+1))
-        names[name] = [False]*timeslots
+        schedules[name] = [False]*timeslots
 
         print("Which timeslots is %s busy?" % name)
         busy_slot = input()
         while busy_slot != '':
             # convert the text input to a zero-indexed position
             busy_slot = int(busy_slot) - 1
-            if busy_slot < 0 or busy_slot >= len(names[name]):
+            if busy_slot < 0 or busy_slot >= len(schedules[name]):
                 busy_slot = input()
                 continue
-            names[name][busy_slot] = True
+            schedules[name][busy_slot] = True
             busy_slot = input()
 
-    return names
+    return (schedules, timeslots)
 
 def read_doodle():
     """Read initial schedule data from an excel file exported by Doodle"""
-    names = dict()
+    schedules = dict()
     # TODO: use OpenPyXl to read an excel file from doodle
-    return names
+    return schedules
 
-def generate_yices_base(yices, names):
+def generate_yices_base(yices, schedules):
     """Generate yices code describing people's initial schedule constraints"""
-    for (name, schedule) in names.items():
+    for (name, schedule) in schedules.items():
         print("(define %s :: (bitvector %s))" % (name, len(schedule)), file=yices)
         for busy_slot in [i for i, v in enumerate(schedule) if v]:
             print("(assert (not (bit %s %s)))" % (name, busy_slot), file=yices)
 
 def define_meetings(names):
     """Prompts user to define meeting participants and times via command line"""
+    names = [name for name in names]
     num_meetings = 1
     meetings = list()
     while True:
@@ -67,19 +68,25 @@ def define_meetings(names):
             break
     return meetings
 
-def generate_yices_meetings(yices, meetings, length):
+def generate_yices_meetings(yices, meetings, names, length):
     """Generate yices code describing how meetings must be scheduled"""
+    time_required = dict.fromkeys([m[0] for m in names], 0)
     for meeting in meetings:
-        names = ' '.join(meeting[0])
+        names = meeting[0]
         m_length = meeting[1]
+        for name in names:
+            time_required[name] += m_length
         time_slots = ["(bv-zero-extend (bv-extract %s %s (bv-and %s)) %s)"
-                      % (i, i, names, int(log(m_length, 2)))
+                      % (i, i, ' '.join(names), int(log(m_length, 2)))
                       for i in range(length)]
         meeting_times = ["\n\t(= (mk-bv %s %s) (bv-add %s))"
                          % (int(log(m_length, 2)) + 1, m_length,
                             ' '.join(time_slots[i:i + m_length]))
                          for i in range(length - m_length + 1)]
         print("(assert (or %s))" % ''.join(meeting_times), file=yices)
+    for (name, total_time) in time_required.items():
+        times = ["(ite (bit %s %s) 1 0)" % (name, i) for i in range(length)]
+        print("(assert (= %s (+ %s)))" % (total_time, ' '.join(times)), file=yices)
 
 def generate_ordinal(num):
     """Generate the ordinal equivalent of the given cardinal number"""
@@ -94,9 +101,9 @@ def generate_ordinal(num):
     return "%sth" % num
 
 def driver():
-    # names = read_cli_input()
-    # generate_yices_base(sys.stdout, names)
-    meetings = define_meetings(['alice', 'bob', 'charlie'])
-    generate_yices_meetings(sys.stdout, meetings, 7)
+    (schedules, length) = read_cli_input()
+    meetings = define_meetings(schedules.keys())
+    generate_yices_base(sys.stdout, schedules)
+    generate_yices_meetings(sys.stdout, meetings, schedules.keys(), length)
 
 driver()
