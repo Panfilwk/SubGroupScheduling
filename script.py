@@ -1,5 +1,6 @@
 import sys
-import subprocess
+from subprocess import run, PIPE
+from pyparsing import OneOrMore, nestedExpr
 
 def read_cli_input():
     """Prompt the user for initial schedule info via command line"""
@@ -90,14 +91,17 @@ def generate_yices_meetings(yices, meetings, length):
 
 def parse_yices(yices_result, max_valid):
     """Parses the tuple results from yices into a python dictionary"""
+    success = yices_result.splitlines()[0]
+    if success == 'unsat':
+        return
     final_schedules = dict()
-    for line in yices_result.splitlines():
-        if line.startswith("(="):
-            tokens = line[:-2].split(' ')
-            final_schedules[tokens[1]] = [int(meeting)
-                                          if int(meeting) >= -1 and int(meeting) <= max_valid
-                                          else 0
-                                          for meeting in tokens[3:]]
+    for exp in OneOrMore(nestedExpr()).parseString(yices_result[4:]):
+        if exp[0] != "=":
+            continue
+        final_schedules[exp[1]] = [int(meeting)
+                                   if int(meeting) >= -1 and int(meeting) <= max_valid
+                                   else 0
+                                   for meeting in exp[2][1:]]
     print(final_schedules)
 
 
@@ -121,8 +125,7 @@ def driver():
         generate_yices_base(yfile, schedules)
         generate_yices_meetings(yfile, meetings, length)
         print("(check)\n(show-model)", file=yfile)
-    result = subprocess.run(['yices', 'yfile.ys'], stdout=subprocess.PIPE).stdout
-    print(result.decode("utf-8"))
+    result = run(['yices', 'yfile.ys'], stdout=PIPE).stdout
     parse_yices(result.decode("utf-8"), len(meetings))
 
 driver()
